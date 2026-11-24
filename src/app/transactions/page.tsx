@@ -1,15 +1,13 @@
-
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { AppShell } from "@/components/AppShell";
-import { recentTransactions, type Transaction } from "@/data/sample";
+import { useTransactions } from "@/context/TransactionContext";
 import { formatRupees, formatSignedRupees } from "@/lib/format";
 
 export default function TransactionsPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>(
-    recentTransactions
-  );
+  const { transactions, addTransaction, deleteTransaction } =
+    useTransactions();
 
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
@@ -17,17 +15,21 @@ export default function TransactionsPage() {
   const [type, setType] = useState<"income" | "expense">("expense");
   const [date, setDate] = useState("2026-11-24");
 
-  function addTransaction(event: React.FormEvent<HTMLFormElement>) {
+  function handleAddTransaction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const numericAmount = Number(amount);
 
-    if (!name.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) {
+    if (
+      !name.trim() ||
+      !Number.isFinite(numericAmount) ||
+      numericAmount <= 0
+    ) {
       alert("Enter a name and a valid positive amount.");
       return;
     }
 
-    const newTransaction: Transaction = {
+    addTransaction({
       id: `txn-${Date.now()}`,
       name: name.trim(),
       category: type === "income" ? "Income" : category,
@@ -37,17 +39,10 @@ export default function TransactionsPage() {
         year: "numeric",
       }),
       amount: type === "income" ? numericAmount : -numericAmount,
-    };
+    });
 
-    setTransactions((previous) => [newTransaction, ...previous]);
     setName("");
     setAmount("");
-  }
-
-  function deleteTransaction(id: string) {
-    setTransactions((previous) =>
-      previous.filter((transaction) => transaction.id !== id)
-    );
   }
 
   const totalIncome = transactions
@@ -85,7 +80,7 @@ export default function TransactionsPage() {
         </div>
 
         <form
-          onSubmit={addTransaction}
+          onSubmit={handleAddTransaction}
           className="space-y-4 rounded-2xl border border-white/10 bg-[#121a2f] p-5"
         >
           <h2 className="font-semibold text-white">Add Transaction</h2>
@@ -200,4 +195,3 @@ export default function TransactionsPage() {
     </AppShell>
   );
 }
-

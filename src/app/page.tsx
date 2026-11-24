@@ -1,16 +1,63 @@
+"use client";
+
 import { AppShell } from "@/components/AppShell";
 import { CategoryChart } from "@/components/CategoryChart";
 import { MonthlyChart } from "@/components/MonthlyChart";
 import { SummaryCard } from "@/components/SummaryCard";
 import { TransactionList } from "@/components/TransactionList";
-import { summaryCards } from "@/data/sample";
+import { useTransactions } from "@/context/TransactionContext";
 
 export default function HomePage() {
+  const { transactions } = useTransactions();
+
+  const totalIncome = transactions
+    .filter((transaction) => transaction.amount > 0)
+    .reduce((total, transaction) => total + transaction.amount, 0);
+
+  const totalExpenses = transactions
+    .filter(
+      (transaction) =>
+        transaction.amount < 0 && transaction.category !== "Savings"
+    )
+    .reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
+
+  const totalSavings = transactions
+    .filter((transaction) => transaction.category === "Savings")
+    .reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
+
+  const availableBalance = totalIncome - totalExpenses - totalSavings;
+
+  const summaryCards = [
+    {
+      id: "income",
+      label: "Total Income",
+      amount: totalIncome,
+      detail: "Based on your transactions",
+    },
+    {
+      id: "expenses",
+      label: "Total Expenses",
+      amount: totalExpenses,
+      detail: "Excluding savings transfers",
+    },
+    {
+      id: "balance",
+      label: "Available Balance",
+      amount: availableBalance,
+      detail: "Income minus expenses and savings",
+    },
+    {
+      id: "savings",
+      label: "Savings",
+      amount: totalSavings,
+      detail: "Based on savings transactions",
+    },
+  ];
+
   return (
     <AppShell currentPath="/">
       <p className="mb-6 max-w-3xl text-sm leading-6 text-slate-400">
-        This overview uses fictional sample money only. Bank connections, CSV
-        upload, and the AI assistant are coming soon.
+        Your financial overview is calculated from your transactions.
       </p>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -10,6 +11,34 @@ type Message = {
   text: string;
 };
 
+function parseTransactionDate(value: string): Date | null {
+  const trimmed = value.trim();
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+
+    const date = new Date(year, month - 1, day);
+
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) {
+      return null;
+    }
+
+    return date;
+  }
+
+  const parsed = new Date(trimmed);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export default function AiAssistantPage() {
   const { transactions } = useTransactions();
 
@@ -17,10 +46,11 @@ export default function AiAssistantPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      text: "Hello! I'm your SpendSense demo assistant. Ask me about your income, expenses or spending patterns.",
+      text: "Hello! I'm your SpendSense assistant. Ask me about your income, expenses, savings or spending patterns.",
     },
   ]);
 
+  // Overall financial calculations
   const income = transactions
     .filter((item) => item.amount > 0)
     .reduce((sum, item) => sum + item.amount, 0);
@@ -34,81 +64,258 @@ export default function AiAssistantPage() {
   const savings = transactions
     .filter((item) => item.category === "Savings")
     .reduce((sum, item) => sum + Math.abs(item.amount), 0);
-    const savingsRate =
-  income > 0 ? (savings / income) * 100 : 0;
 
-const expenseRate =
-  income > 0 ? (expenses / income) * 100 : 0;
+  const balance = income - expenses - savings;
 
-const savingsSuggestions: string[] = [];
+  const savingsRate =
+    income > 0 ? (savings / income) * 100 : 0;
 
-if (transactions.length === 0) {
-  savingsSuggestions.push(
-    "Add some transactions to receive personalised financial suggestions."
-  );
-} else if (income === 0) {
-  savingsSuggestions.push(
-    "Record your income to make your savings analysis more meaningful."
-  );
-} else {
-  if (savings === 0) {
+  const expenseRate =
+    income > 0 ? (expenses / income) * 100 : 0;
+
+  // Automatic savings suggestions
+  const savingsSuggestions: string[] = [];
+
+  if (transactions.length === 0) {
     savingsSuggestions.push(
-      "You have not recorded any savings transfers yet. Consider setting a realistic savings goal."
+      "Add some transactions to receive personalised financial suggestions."
+    );
+  } else if (income === 0) {
+    savingsSuggestions.push(
+      "Record your income to make your savings analysis more meaningful."
     );
   } else {
-    savingsSuggestions.push(
-      `Your recorded savings rate is ${savingsRate.toFixed(1)}% of your income.`
-    );
-  }
-
-  if (expenseRate > 80) {
-    savingsSuggestions.push(
-      "Your recorded expenses are above 80% of your income. Review your spending categories and identify areas where you could reduce costs."
-    );
-  } else if (expenseRate > 0) {
-    savingsSuggestions.push(
-      "Your recorded expenses are below 80% of your income. Continue monitoring your spending."
-    );
-  }
-
-  if (savings > income) {
-    savingsSuggestions.push(
-      "Your recorded savings transfers exceed your recorded income. Review your entries to make sure they are accurate."
-    );
-  }
-}
-    const unusualExpenses = transactions.filter((transaction) => {
-      if (transaction.amount >= 0 || transaction.category === "Savings") {
-        return false;
-      }
-    
-      const sameCategoryExpenses = transactions.filter(
-        (item) =>
-          item.amount < 0 &&
-          item.category === transaction.category &&
-          item.id !== transaction.id
+    if (savings === 0) {
+      savingsSuggestions.push(
+        "You have not recorded any savings transfers yet. Consider setting a realistic savings goal."
       );
-    
-      if (sameCategoryExpenses.length < 2) {
-        return false;
-      }
-    
-      const average =
-        sameCategoryExpenses.reduce(
-          (sum, item) => sum + Math.abs(item.amount),
-          0
-        ) / sameCategoryExpenses.length;
-    
-      return Math.abs(transaction.amount) > average * 2;
-    });
+    } else {
+      savingsSuggestions.push(
+        `Your recorded savings rate is ${savingsRate.toFixed(1)}% of your income.`
+      );
+    }
 
+    if (expenseRate > 80) {
+      savingsSuggestions.push(
+        "Your recorded expenses are above 80% of your income. Review your spending categories."
+      );
+    } else if (expenseRate > 0) {
+      savingsSuggestions.push(
+        "Your recorded expenses are below 80% of your income. Continue monitoring your spending."
+      );
+    }
+
+    if (savings > income) {
+      savingsSuggestions.push(
+        "Your recorded savings transfers exceed your recorded income. Review your entries for accuracy."
+      );
+    }
+  }
+
+  // Unusual expense detection
+  const unusualExpenses = transactions.filter((transaction) => {
+    if (
+      transaction.amount >= 0 ||
+      transaction.category === "Savings"
+    ) {
+      return false;
+    }
+
+    const sameCategoryExpenses = transactions.filter(
+      (item) =>
+        item.amount < 0 &&
+        item.category === transaction.category &&
+        item.id !== transaction.id
+    );
+
+    if (sameCategoryExpenses.length < 2) {
+      return false;
+    }
+
+    const average =
+      sameCategoryExpenses.reduce(
+        (sum, item) => sum + Math.abs(item.amount),
+        0
+      ) / sameCategoryExpenses.length;
+
+    return Math.abs(transaction.amount) > average * 2;
+  });
+
+  // Answer questions using actual transaction data
   function getAnswer(text: string) {
     const query = text.toLowerCase();
+    const now = new Date();
 
-    if (query.includes("income")) {
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const previousMonthDate = new Date(
+      currentYear,
+      currentMonth - 1,
+      1
+    );
+
+    const previousMonth = previousMonthDate.getMonth();
+    const previousMonthYear = previousMonthDate.getFullYear();
+
+    function isInMonth(
+      transactionDate: string,
+      month: number,
+      year: number
+    ) {
+      const date = parseTransactionDate(transactionDate);
+
+      return (
+        date !== null &&
+        date.getMonth() === month &&
+        date.getFullYear() === year
+      );
+    }
+
+    const currentMonthTransactions = transactions.filter((item) =>
+      isInMonth(item.date, currentMonth, currentYear)
+    );
+
+    const previousMonthTransactions = transactions.filter((item) =>
+      isInMonth(item.date, previousMonth, previousMonthYear)
+    );
+
+    function calculateIncome(items: typeof transactions) {
+      return items
+        .filter((item) => item.amount > 0)
+        .reduce((sum, item) => sum + item.amount, 0);
+    }
+
+    function calculateExpenses(items: typeof transactions) {
+      return items
+        .filter(
+          (item) =>
+            item.amount < 0 && item.category !== "Savings"
+        )
+        .reduce((sum, item) => sum + Math.abs(item.amount), 0);
+    }
+
+    const monthlyIncome = calculateIncome(currentMonthTransactions);
+    const monthlyExpenses = calculateExpenses(currentMonthTransactions);
+
+    const previousMonthExpenses = calculateExpenses(
+      previousMonthTransactions
+    );
+
+    const previousMonthIncome = calculateIncome(
+      previousMonthTransactions
+    );
+
+    const categoryTotals = transactions
+      .filter(
+        (item) =>
+          item.amount < 0 && item.category !== "Savings"
+      )
+      .reduce<Record<string, number>>((totals, item) => {
+        totals[item.category] =
+          (totals[item.category] ?? 0) + Math.abs(item.amount);
+
+        return totals;
+      }, {});
+
+    const categoryEntries = Object.entries(categoryTotals).sort(
+      (a, b) => b[1] - a[1]
+    );
+
+    const highestExpense = transactions
+      .filter(
+        (item) =>
+          item.amount < 0 && item.category !== "Savings"
+      )
+      .sort((a, b) => a.amount - b.amount)[0];
+
+    // Category questions must be checked before general expense questions
+    if (
+      query.includes("category") ||
+      query.includes("where do i spend") ||
+      query.includes("spend most") ||
+      query.includes("spending most")
+    ) {
+      if (categoryEntries.length === 0) {
+        return "You haven't recorded any expenses yet.";
+      }
+
+      const highest = categoryEntries[0];
+
+      return `Your highest spending category is ${highest[0]}, with ${formatRupees(highest[1])} in recorded expenses.`;
+    }
+
+    // Highest individual expense
+    if (
+      query.includes("highest expense") ||
+      query.includes("largest expense") ||
+      query.includes("biggest expense") ||
+      query.includes("most expensive")
+    ) {
+      if (!highestExpense) {
+        return "You haven't recorded any expenses yet.";
+      }
+
+      return `Your highest recorded expense is ${highestExpense.name}, in ${highestExpense.category}, amounting to ${formatRupees(Math.abs(highestExpense.amount))} on ${highestExpense.date}.`;
+    }
+
+    // Month-to-month comparison
+    if (
+      query.includes("compare") ||
+      query.includes("comparison")
+    ) {
+      if (
+        !query.includes("month") &&
+        !query.includes("spending") &&
+        !query.includes("expense") &&
+        !query.includes("income")
+      ) {
+        return "Try asking me to compare your monthly income or expenses.";
+      }
+
+      const difference =
+        monthlyExpenses - previousMonthExpenses;
+
+      const comparison =
+        difference > 0
+          ? `Your expenses increased by ${formatRupees(difference)}.`
+          : difference < 0
+            ? `Your expenses decreased by ${formatRupees(Math.abs(difference))}.`
+            : "Your expenses remained the same.";
+
+      return `This month: ${formatRupees(monthlyExpenses)} in expenses. Previous month: ${formatRupees(previousMonthExpenses)}. ${comparison}`;
+    }
+
+    // Current month questions
+    if (
+      query.includes("this month") ||
+      query.includes("current month") ||
+      query.includes("monthly")
+    ) {
+      if (query.includes("income")) {
+        return `Your recorded income this month is ${formatRupees(monthlyIncome)}.`;
+      }
+
+      if (
+        query.includes("expense") ||
+        query.includes("spend")
+      ) {
+        return `Your recorded expenses this month are ${formatRupees(monthlyExpenses)}.`;
+      }
+
+      return `This month, your recorded income is ${formatRupees(monthlyIncome)} and your expenses are ${formatRupees(monthlyExpenses)}.`;
+    }
+
+    // Overall income
+    if (
+      query.includes("income") ||
+      query.includes("earned") ||
+      query.includes("earning")
+    ) {
       return `Your recorded total income is ${formatRupees(income)}.`;
     }
 
+    // Overall expenses
     if (
       query.includes("expense") ||
       query.includes("spend")
@@ -116,47 +323,56 @@ if (transactions.length === 0) {
       return `Your recorded total expenses are ${formatRupees(expenses)}.`;
     }
 
-    if (query.includes("saving")) {
-      return `Your recorded savings transfers total ${formatRupees(savings)}.`;
+    // Savings
+    if (
+      query.includes("saving") ||
+      query.includes("saved")
+    ) {
+      return `Your recorded savings transfers total ${formatRupees(savings)}. Your savings rate is ${savingsRate.toFixed(1)}% of your recorded income.`;
     }
 
+    // Available balance
     if (
       query.includes("balance") ||
-      query.includes("left")
+      query.includes("left") ||
+      query.includes("remaining")
     ) {
-      return `Your calculated available balance is ${formatRupees(income - expenses - savings)}.`;
+      return `Your calculated available balance is ${formatRupees(balance)}.`;
     }
 
-    if (query.includes("transaction")) {
+    // Transaction count
+    if (
+      query.includes("transaction") ||
+      query.includes("how many")
+    ) {
       return `You currently have ${transactions.length} recorded transactions.`;
     }
 
-    if (query.includes("category")) {
-      const categoryTotals = transactions
-        .filter(
-          (item) =>
-            item.amount < 0 && item.category !== "Savings"
-        )
-        .reduce<Record<string, number>>((totals, item) => {
-          totals[item.category] =
-            (totals[item.category] ?? 0) + Math.abs(item.amount);
-          return totals;
-        }, {});
-
-      const entries = Object.entries(categoryTotals);
-
-      if (entries.length === 0) {
+    // Category-wise spending summary
+    if (
+      query.includes("all categories") ||
+      query.includes("category wise") ||
+      query.includes("breakdown") ||
+      query.includes("categories")
+    ) {
+      if (categoryEntries.length === 0) {
         return "You haven't recorded any expenses yet.";
       }
 
-      const highest = entries.sort(
-        (a, b) => b[1] - a[1]
-      )[0];
-
-      return `Your highest spending category is ${highest[0]}, with ${formatRupees(highest[1])} in recorded expenses.`;
+      return `Your category-wise expenses are: ${categoryEntries
+        .map(
+          ([category, amount]) =>
+            `${category}: ${formatRupees(amount)}`
+        )
+        .join("; ")}.`;
     }
 
-    return "I can help with your recorded income, expenses, savings, balance, transaction count and spending categories. Try asking about one of these.";
+    // Monthly income and expense comparison
+    if (query.includes("difference")) {
+      return `Your recorded income is ${formatRupees(income)} and your recorded expenses are ${formatRupees(expenses)}. The difference is ${formatRupees(income - expenses)}.`;
+    }
+
+    return "I can answer questions about your total income, expenses, savings, balance, highest expense, spending categories, monthly totals and monthly comparisons. Try one of the suggested questions.";
   }
 
   function sendMessage(text = question) {
@@ -179,6 +395,10 @@ if (transactions.length === 0) {
     "How much income have I recorded?",
     "Which category do I spend most on?",
     "What is my available balance?",
+    "What is my highest expense?",
+    "How much did I spend this month?",
+    "Compare my monthly expenses",
+    "Show my category-wise breakdown",
   ];
 
   return (
@@ -188,6 +408,7 @@ if (transactions.length === 0) {
           <h1 className="text-2xl font-bold text-white">
             AI Financial Assistant
           </h1>
+
           <p className="mt-1 text-sm text-slate-400">
             Explore your financial data using the SpendSense demo assistant.
           </p>
@@ -199,63 +420,68 @@ if (transactions.length === 0) {
             Gemini AI is not connected.
           </p>
         </div>
+
+        {/* Unusual Expense Detection */}
         <section className="rounded-2xl border border-white/10 bg-[#121a2f] p-5">
-  <h2 className="font-semibold text-white">
-    Unusual Expense Detection
-  </h2>
+          <h2 className="font-semibold text-white">
+            Unusual Expense Detection
+          </h2>
 
-  {unusualExpenses.length === 0 ? (
-    <p className="mt-3 text-sm text-slate-400">
-      No unusually high expenses detected based on your recorded
-      category averages.
-    </p>
-  ) : (
-    <div className="mt-4 space-y-3">
-      {unusualExpenses.map((transaction) => (
-        <div
-          key={transaction.id}
-          className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-4"
-        >
-          <p className="font-medium text-white">
-            {transaction.name}
-          </p>
+          {unusualExpenses.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-400">
+              No unusually high expenses detected based on your recorded
+              category averages.
+            </p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {unusualExpenses.map((transaction) => (
+                <div
+                  key={transaction.id}
+                  className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-4"
+                >
+                  <p className="font-medium text-white">
+                    {transaction.name}
+                  </p>
 
-          <p className="mt-1 text-sm text-slate-400">
-            {transaction.category} · {transaction.date}
-          </p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {transaction.category} · {transaction.date}
+                  </p>
 
-          <p className="mt-2 font-semibold text-rose-300">
-            {formatRupees(Math.abs(transaction.amount))}
-          </p>
+                  <p className="mt-2 font-semibold text-rose-300">
+                    {formatRupees(Math.abs(transaction.amount))}
+                  </p>
 
-          <p className="mt-1 text-xs text-slate-400">
-            More than twice the average of other expenses
-            in this category.
-          </p>
-        </div>
-      ))}
-    </div>
-  )}
-</section>
-<section className="rounded-2xl border border-white/10 bg-[#121a2f] p-5">
-  <h2 className="font-semibold text-white">
-    Automatic Savings Suggestions
-  </h2>
+                  <p className="mt-1 text-xs text-slate-400">
+                    More than twice the average of other expenses
+                    in this category.
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
-  <div className="mt-4 space-y-3">
-    {savingsSuggestions.map((suggestion, index) => (
-      <div
-        key={index}
-        className="rounded-xl border border-white/10 bg-[#0b1224] p-4"
-      >
-        <p className="text-sm leading-6 text-slate-300">
-          {suggestion}
-        </p>
-      </div>
-    ))}
-  </div>
-</section>
+        {/* Automatic Savings Suggestions */}
+        <section className="rounded-2xl border border-white/10 bg-[#121a2f] p-5">
+          <h2 className="font-semibold text-white">
+            Automatic Savings Suggestions
+          </h2>
 
+          <div className="mt-4 space-y-3">
+            {savingsSuggestions.map((suggestion, index) => (
+              <div
+                key={index}
+                className="rounded-xl border border-white/10 bg-[#0b1224] p-4"
+              >
+                <p className="text-sm leading-6 text-slate-300">
+                  {suggestion}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Chat Interface */}
         <section className="flex min-h-[420px] flex-col rounded-2xl border border-white/10 bg-[#121a2f] p-5">
           <div className="flex-1 space-y-4">
             {messages.map((message, index) => (

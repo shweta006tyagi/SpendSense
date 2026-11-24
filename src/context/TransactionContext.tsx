@@ -11,10 +11,11 @@ import {
 import type { Transaction } from "@/data/sample";
 
 type TransactionContextType = {
-  transactions: Transaction[];
-  addTransaction: (transaction: Transaction) => void;
-  deleteTransaction: (id: string) => void;
-};
+    transactions: Transaction[];
+    addTransaction: (transaction: Transaction) => void;
+    addTransactions: (newTransactions: Transaction[]) => void;
+    deleteTransaction: (id: string) => void;
+  };
 
 const TransactionContext = createContext<
   TransactionContextType | undefined
@@ -55,7 +56,12 @@ export function TransactionProvider({
   function addTransaction(transaction: Transaction) {
     setTransactions((previous) => [transaction, ...previous]);
   }
-
+  function addTransactions(newTransactions: Transaction[]) {
+    setTransactions((previous) => [
+      ...newTransactions,
+      ...previous,
+    ]);
+  }
   function deleteTransaction(id: string) {
     setTransactions((previous) =>
       previous.filter((transaction) => transaction.id !== id)
@@ -64,7 +70,12 @@ export function TransactionProvider({
 
   return (
     <TransactionContext.Provider
-      value={{ transactions, addTransaction, deleteTransaction }}
+    value={{
+        transactions,
+        addTransaction,
+        addTransactions,
+        deleteTransaction,
+      }}
     >
       {children}
     </TransactionContext.Provider>

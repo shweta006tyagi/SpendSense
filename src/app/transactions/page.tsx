@@ -1,5 +1,5 @@
 "use client";
-
+import { CsvUploader } from "@/components/CsvUploader";
 import { useState, type FormEvent } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useTransactions } from "@/context/TransactionContext";
@@ -62,7 +62,7 @@ export default function TransactionsPage() {
             Add and manage your income and expenses.
           </p>
         </div>
-
+        <CsvUploader />
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-2xl border border-white/10 bg-[#121a2f] p-5">
             <p className="text-sm text-slate-400">Total Income</p>

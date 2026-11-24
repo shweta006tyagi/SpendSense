@@ -1,0 +1,365 @@
+
+"use client";
+
+import { useState } from "react";
+import Papa from "papaparse";
+
+import type { Transaction } from "@/data/sample";
+import { formatSignedRupees } from "@/lib/format";
+import { useTransactions } from "@/context/TransactionContext";
+
+type CsvRow = {
+  name?: string;
+  category?: string;
+  date?: string;
+  amount?: string;
+};
+
+export function CsvUploader() {
+  const {
+    transactions: existingTransactions,
+    addTransactions,
+  } = useTransactions();
+
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [fileName, setFileName] = useState("");
+  const [isParsed, setIsParsed] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+
+  function formatDate(value: string): string | null {
+    const trimmed = value.trim();
+
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (isoMatch) {
+      const [, year, month, day] = isoMatch;
+
+      const date = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day)
+      );
+
+      if (
+        date.getFullYear() !== Number(year) ||
+        date.getMonth() !== Number(month) - 1 ||
+        date.getDate() !== Number(day)
+      ) {
+        return null;
+      }
+
+      return date.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    }
+
+    const parsed = new Date(trimmed);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return parsed.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
+  function handleFileUpload(file?: File) {
+    if (!file) return;
+
+    setFileName(file.name);
+    setTransactions([]);
+    setErrors([]);
+    setSuccessMessage("");
+    setIsParsed(false);
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setErrors(["Please select a CSV file."]);
+      setIsParsed(true);
+      return;
+    }
+
+    Papa.parse<CsvRow>(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim().toLowerCase(),
+
+      complete: (results) => {
+        const requiredColumns = [
+          "name",
+          "category",
+          "date",
+          "amount",
+        ];
+
+        const headers = results.meta.fields ?? [];
+
+        const missingColumns = requiredColumns.filter(
+          (column) => !headers.includes(column)
+        );
+
+        if (missingColumns.length > 0) {
+          setErrors([
+            `Missing required columns: ${missingColumns.join(", ")}`,
+          ]);
+          setIsParsed(true);
+          return;
+        }
+
+        const validTransactions: Transaction[] = [];
+        const validationErrors: string[] = [];
+
+        results.data.forEach((row, index) => {
+          const rowNumber = index + 2;
+
+          const name = row.name?.trim();
+          const category = row.category?.trim();
+          const date = row.date?.trim();
+          const amountText = row.amount?.trim();
+
+          const amount = Number(amountText);
+          const formattedDate = date ? formatDate(date) : null;
+
+          if (!name || !category || !date || !amountText) {
+            validationErrors.push(
+              `Row ${rowNumber}: One or more fields are empty.`
+            );
+            return;
+          }
+
+          if (!Number.isFinite(amount) || amount === 0) {
+            validationErrors.push(
+              `Row ${rowNumber}: Amount must be a non-zero number.`
+            );
+            return;
+          }
+
+          if (!formattedDate) {
+            validationErrors.push(
+              `Row ${rowNumber}: Invalid date. Use YYYY-MM-DD or a valid date format.`
+            );
+            return;
+          }
+
+          validTransactions.push({
+            id: `csv-${Date.now()}-${index}`,
+            name,
+            category,
+            date: formattedDate,
+            amount,
+          });
+        });
+
+        setTransactions(validTransactions);
+        setErrors(validationErrors);
+        setIsParsed(true);
+      },
+
+      error: () => {
+        setErrors([
+          "Unable to read this CSV file. Please try another file.",
+        ]);
+        setIsParsed(true);
+      },
+    });
+  }
+
+  function handleImport() {
+    if (transactions.length === 0) return;
+
+    const getKey = (transaction: Transaction) =>
+      [
+        transaction.name.trim().toLowerCase(),
+        transaction.category.trim().toLowerCase(),
+        transaction.date.trim().toLowerCase(),
+        transaction.amount,
+      ].join("|");
+
+    const existingKeys = new Set(
+      existingTransactions.map(getKey)
+    );
+
+    const importedKeys = new Set<string>();
+
+    const newTransactions = transactions.filter((transaction) => {
+      const key = getKey(transaction);
+
+      if (
+        existingKeys.has(key) ||
+        importedKeys.has(key)
+      ) {
+        return false;
+      }
+
+      importedKeys.add(key);
+      return true;
+    });
+
+    const duplicateCount =
+      transactions.length - newTransactions.length;
+
+    if (newTransactions.length > 0) {
+      addTransactions(newTransactions);
+    }
+
+    setSuccessMessage(
+      `${newTransactions.length} transaction(s) imported successfully. ${duplicateCount} duplicate(s) skipped.`
+    );
+
+    setTransactions([]);
+    setIsParsed(false);
+    setFileName("");
+  }
+
+  return (
+    <section className="space-y-5 rounded-2xl border border-white/10 bg-[#121a2f] p-5 sm:p-6">
+      <div>
+        <h2 className="text-lg font-semibold text-white">
+          Import Transactions
+        </h2>
+
+        <p className="mt-1 text-sm text-slate-400">
+          Upload a CSV file to validate, preview and import transactions.
+        </p>
+      </div>
+
+      <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-white/20 bg-[#0b1224] px-5 py-10 text-center transition hover:border-purple-400">
+        <span className="text-3xl">📄</span>
+
+        <span className="mt-3 font-medium text-white">
+          Choose CSV file
+        </span>
+
+        <span className="mt-1 text-xs text-slate-400">
+          Select a .csv file from your computer
+        </span>
+
+        <input
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(event) => {
+            handleFileUpload(event.target.files?.[0]);
+            event.target.value = "";
+          }}
+        />
+      </label>
+
+      {fileName && (
+        <p className="text-sm text-slate-300">
+          Selected file: <strong>{fileName}</strong>
+        </p>
+      )}
+
+      {errors.length > 0 && (
+        <div className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-4">
+          <p className="font-medium text-rose-300">
+            Validation messages
+          </p>
+
+          <ul className="mt-2 space-y-1 text-sm text-rose-200">
+            {errors.map((error, index) => (
+              <li key={index}>{error}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {isParsed && transactions.length > 0 && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-4">
+            <p className="font-medium text-emerald-300">
+              CSV validation completed
+            </p>
+
+            <p className="mt-1 text-sm text-slate-300">
+              {transactions.length} valid transaction(s) ready for import.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="mb-3 font-semibold text-white">
+              Transaction Preview
+            </h3>
+
+            <div className="overflow-x-auto rounded-xl border border-white/10">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-white/5 text-slate-400">
+                  <tr>
+                    <th className="p-3">Name</th>
+                    <th className="p-3">Category</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3 text-right">Amount</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {transactions.slice(0, 5).map((transaction) => (
+                    <tr
+                      key={transaction.id}
+                      className="border-t border-white/5"
+                    >
+                      <td className="p-3 text-white">
+                        {transaction.name}
+                      </td>
+
+                      <td className="p-3 text-slate-300">
+                        {transaction.category}
+                      </td>
+
+                      <td className="p-3 text-slate-400">
+                        {transaction.date}
+                      </td>
+
+                      <td
+                        className={`p-3 text-right ${
+                          transaction.amount < 0
+                            ? "text-rose-300"
+                            : "text-emerald-300"
+                        }`}
+                      >
+                        {formatSignedRupees(transaction.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {transactions.length > 5 && (
+              <p className="mt-2 text-xs text-slate-400">
+                Showing first 5 of {transactions.length} valid transactions.
+              </p>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleImport}
+            className="rounded-lg bg-purple-600 px-5 py-3 font-medium text-white hover:bg-purple-500"
+          >
+            Import Transactions
+          </button>
+        </div>
+      )}
+
+      {isParsed && transactions.length === 0 && errors.length === 0 && (
+        <p className="text-sm text-slate-400">
+          No transactions were found in this CSV file.
+        </p>
+      )}
+
+      {successMessage && (
+        <p className="rounded-lg bg-emerald-400/10 p-3 text-sm text-emerald-300">
+          {successMessage}
+        </p>
+      )}
+    </section>
+  );
+}
+
